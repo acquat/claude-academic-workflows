@@ -1,0 +1,255 @@
+---
+paths:
+  - "**/*.sas"
+---
+
+# SAS/SQL Conventions — SNDS (Oracle, secure portal)
+
+> Examples below use a generic example cohort named `COND` (e.g. an ALD condition) — adapt table/column names to your project. The partition-key, join-key, safe-replace, and verification rules are SNDS-universal: keep them.
+
+Conventions for all SAS programs operating on the SNDS Oracle database via the secure portal.
+
+---
+
+## 1. Macro Variable Conventions
+
+All study parameters must be defined as `%let` at the top of every script — never hardcoded inline.
+
+```sas
+/* Standard macro block — copy to top of every script */
+%let yr_start_full = 2010;
+%let yr_end_full   = 2019;
+%let yr_start      = 10;          /* 2-digit suffix for PMSI table names */
+%let yr_end        = 19;
+%let ald_code      = 14;          /* ALD 14 = chronic respiratory insufficiency */
+%let min_prescriber_n = 10;       /* Minimum patient volume for LOO reliability */
+%let outpath       = .;           /* Output directory — adjust per portal */
+```
+
+**Rationale:** The SNDS portal does not allow interactive editing. All parameters must be
+auditable from the script header.
+
+---
+
+## 2. Oracle Date Filter — Critical Rule
+
+**ALWAYS filter on `FLX_DIS_DTD`** when querying `ER_PRS_F` or `ER_BIO_F`.
+
+```sas
+/* CORRECT — uses Oracle partition key */
+WHERE r.FLX_DIS_DTD >= "&claims_start"d
+  AND r.FLX_DIS_DTD <= "&claims_end"d
+
+/* WRONG — EXE_SOI_DTD is not the partition key; causes full table scan */
+WHERE r.EXE_SOI_DTD >= "&claims_start"d   /* DO NOT USE */
+```
+
+`FLX_DIS_DTD` = date claim became available for processing (indexed partition key).
+`EXE_SOI_DTD` = date care was provided (not indexed; triggers full table scan).
+
+---
+
+## 3. Standard SNDS Join Keys
+
+### ER_PRS_F ↔ ER_BIO_F (9-key composite join)
+
+```sas
+ON  l.DCT_ORD_NUM = r.DCT_ORD_NUM
+AND l.FLX_DIS_DTD = r.FLX_DIS_DTD
+AND l.FLX_EMT_NUM = r.FLX_EMT_NUM
+AND l.FLX_EMT_ORD = r.FLX_EMT_ORD
+AND l.FLX_EMT_TYP = r.FLX_EMT_TYP
+AND l.FLX_TRT_DTD = r.FLX_TRT_DTD
+AND l.ORG_CLE_NUM = r.ORG_CLE_NUM
+AND l.PRS_ORD_NUM = r.PRS_ORD_NUM
+AND l.REM_TYP_AFF = r.REM_TYP_AFF
+```
+
+All 9 keys are required. Omitting any key produces duplicate rows.
+
+### IR_IMB_R ↔ IR_BEN_R (ALD to demographics)
+
+```sas
+ON  l.BEN_NIR_PSA = r.BEN_NIR_PSA
+AND l.BEN_RNG_GEM = r.BEN_RNG_GEM
+```
+
+### DCIR ↔ PMSI (via chainage table)
+
+```sas
+/* cond_ben → T_MCOaaC → T_MCOaaB → T_MCOaaE */
+INNER JOIN oravue.T_MCO&yy.C AS c
+    ON p.BEN_NIR_PSA = c.NIR_ANO_17   /* Bridge: NIR_ANO_17 = BEN_NIR_PSA in chainage */
+WHERE c.NIR_RET = '0'
+  AND c.NAI_RET = '0'
+  AND c.SEX_RET = '0'    /* Quality filters: accept only clean linkages */
+```
+
+---
+
+## 4. Table Naming Conventions
+
+| Prefix | Usage |
+|--------|-------|
+| `ORAUSER.cond_*` | Cohort-construction stages |
+| `ORAUSER.prescriber_*` | Instrument-construction stage |
+| `_v2` suffix | Safe-replace intermediary; verified before original is dropped |
+
+Never use work library for tables that need to survive step boundaries in long scripts.
+
+---
+
+## 5. Safe Drop/Replace Pattern
+
+```sas
+/* Step N output */
+proc sql;
+CREATE TABLE ORAUSER.my_table_v2 AS
+SELECT ...;
+quit;
+
+%macro safe_replace;
+    %if %sysfunc(exist(ORAUSER.my_table_v2)) %then %do;
+        proc sql;
+        DROP TABLE ORAUSER.my_table;
+        CREATE TABLE ORAUSER.my_table AS SELECT * FROM ORAUSER.my_table_v2;
+        DROP TABLE ORAUSER.my_table_v2;
+        quit;
+    %end;
+    %else %do;
+        %put ERROR: my_table_v2 was NOT created. Original preserved.;
+    %end;
+%mend;
+%safe_replace;
+```
+
+Use for any step that replaces an existing table. Oracle does not support `CREATE OR REPLACE TABLE`.
+
+---
+
+## 6. Leave-One-Out (LOO) Instrument Construction
+
+Standard sum-and-subtract LOO — exact, avoids GROUP BY complications with PROC MEANS.
+
+```sas
+/* Step A: compute prescriber-year totals */
+proc sql;
+CREATE TABLE ORAUSER.prescriber_totals AS
+SELECT PFS_PRE_NUM,
+       CARE_YEAR,
+       count(DISTINCT BEN_NIR_PSA) AS N_j,
+       sum(TESTED_COND)            AS TOTAL_TESTED_COND,
+       sum(TESTED_ALL)             AS TOTAL_TESTED_ALL
+FROM ORAUSER.prescriber_pt_panel
+GROUP BY PFS_PRE_NUM, CARE_YEAR;
+quit;
+
+/* Step B: join back and compute LOO */
+proc sql;
+CREATE TABLE ORAUSER.panel_with_loo AS
+SELECT
+    p.*,
+    CASE WHEN t.N_j >= 2
+         THEN (t.TOTAL_TESTED_COND - p.TESTED_COND) / (t.N_j - 1)
+         ELSE .   /* Missing for singletons — expected; exclude from first stage */
+    END AS Z_LOO_COND,
+    CASE WHEN t.N_j >= 2
+         THEN (t.TOTAL_TESTED_ALL - p.TESTED_ALL) / (t.N_j - 1)
+         ELSE .
+    END AS Z_LOO_ALL
+FROM ORAUSER.prescriber_pt_panel AS p
+INNER JOIN ORAUSER.prescriber_totals AS t
+    ON  p.PFS_PRE_NUM = t.PFS_PRE_NUM
+    AND p.CARE_YEAR   = t.CARE_YEAR
+WHERE t.N_j >= &min_prescriber_n;
+quit;
+```
+
+**Never** compute LOO by calling PROC MEANS with `BY` — it does not exclude self from the mean.
+
+---
+
+## 7. Verification Steps (Mandatory After Every CREATE TABLE)
+
+```sas
+/* After every CREATE TABLE — both steps required */
+proc contents data=ORAUSER.my_table; run;
+
+proc sql;
+SELECT count(*)                    AS num_obs,
+       count(DISTINCT BEN_NIR_PSA) AS n_patients  /* or relevant ID */
+FROM ORAUSER.my_table;
+quit;
+```
+
+For rate tables — add range check:
+
+```sas
+proc sql;
+SELECT min(RATE_COND) AS rate_min,
+       max(RATE_COND) AS rate_max,
+       nmiss(Z_LOO_COND) AS n_loo_missing
+FROM ORAUSER.prescriber_rate_indiv;
+quit;
+/* Expected: rate_min >= 0, rate_max <= 1, n_loo_missing = N singletons */
+```
+
+---
+
+## 8. ODS Output Conventions
+
+```sas
+/* Open RTF */
+ods rtf file="&outpath./output_filename.rtf" style=journal;
+ods graphics on / width=6in height=4in;
+
+/* Tables: use PROC TABULATE or PROC MEANS with ODS */
+
+/* Histogram */
+proc sgplot data=ORAUSER.prescriber_hist_data;
+    vbar BIN_LABEL / response=N_PRESCRIBERS
+         fillattrs=(color=CX4472C4)
+         barwidth=0.9;
+    xaxis label="Prescriber Testing Rate (COND-Relevant Tests)" values=(0 to 1 by 0.05);
+    yaxis label="Number of Prescribers" grid;
+    title "Distribution of Prescriber-Level Testing Intensity";
+    title2 "COND Cohort 2010-2019 | Minimum 10 Patients per Prescriber";
+run;
+
+/* Close ODS — ALWAYS */
+ods graphics off;
+ods rtf close;
+```
+
+Style notes:
+- Use `style=journal` (clean, publication-ready)
+- Always set axis labels and informative titles
+- Include sample size and date range in title2
+- Color: `CX4472C4` (muted blue) as default for single-series bar charts
+
+---
+
+## 9. FICHSUP Table Guards
+
+BPHNA/RIHNP/RIHND FICHSUP tables may not exist on all portals or for all years.
+
+```sas
+%if %sysfunc(exist(oravue.T_MCO&yy.SUP_BPHNA)) %then %do;
+    /* Include this year in UNION ALL */
+%end;
+%else %do;
+    %put NOTE: T_MCO&yy.SUP_BPHNA not found — skipping year &i;
+%end;
+```
+
+Always check existence before referencing. A missing table causes a hard PROC SQL error.
+
+---
+
+## 10. PROC SQL in Oracle Context
+
+- Prefer `count(DISTINCT col)` over `n(col)` for patient counts (Oracle handles it correctly)
+- Use `datepart()` to extract date from datetime variables: `year(datepart(EXE_SOI_DTD))`
+- Use `cats()` for string concatenation: `cats(SOR_ANN, SOR_MOI)` (no spaces)
+- `CASE WHEN ... THEN ... ELSE ... END` works identically in PROC SQL and Oracle SQL
+- Avoid `HAVING` with aggregated `CASE WHEN` — compute derived column in subquery first

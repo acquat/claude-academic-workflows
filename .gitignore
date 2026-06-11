@@ -1,0 +1,23 @@
+# macOS
+.DS_Store
+
+# LaTeX build artifacts
+*.aux
+*.log
+*.synctex.gz
+*.out
+*.toc
+*.bbl
+*.blg
+*.fls
+*.fdb_latexmk
+
+# R
+.Rhistory
+.RData
+.Rproj.user/
+
+# Editor / OS cruft
+*~
+.idea/
+.vscode/

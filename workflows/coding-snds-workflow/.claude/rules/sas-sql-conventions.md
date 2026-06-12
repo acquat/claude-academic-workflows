@@ -299,3 +299,55 @@ downstream. **Structural/parse correctness is NOT correctness.** Before submitti
 
 > The most expensive SNDS mistake class is the **silent wrong result** — an under/over-pull that
 > parses cleanly. Items 1–5 exist to catch it. When in doubt, probe first.
+
+---
+
+## 13. DCIR régularisations — count acts by SUMMING the SIGNED quantity, never `COUNT(*)` lines
+
+**The DCIR contains régularisation (annulation) lines: a billed act can be cancelled — and re-billed
+— with a line *identical in care content but with a NEGATIVE quantity*, arriving in a LATER flux.
+Counting rows (`COUNT(*)`) therefore over-counts and can count acts that never happened.** This is
+official, documented behavior — verify before changing any count.
+
+**Official rule (verbatim, [DCIR requête-type](https://documentation-snds.health-data-hub.fr/snds/fiches/sas_prestation_dcir)):**
+> *« Dans les tables de prestations … il existe des lignes de régularisation. Elles correspondent à
+> des annulations de prestations avec ou non enregistrement d'une nouvelle ligne … La ligne de
+> régularisation est en tout point identique à la ligne initiale mais avec une quantité d'actes
+> négative. En pratique, il faut donc **sommer les quantités des lignes identiques de prestations et
+> ne garder que les lignes dont la somme est strictement positive**. »*
+
+**Official netting GROUP BY** ([OMOP ETL — traitement préliminaire DCIR](https://documentation-snds.health-data-hub.fr/omop/documentation_etl/traitements_preliminaires/dcir_intermediaire)):
+`ben_nir_psa, ben_rng_gem, exe_soi_dtd, ben_res_dpt, org_aff_ben, pse_spe_cod, psp_spe_cod, <code acte>`
+→ `SUM(<quantité>)` → keep `> 0`. **Groups on the CARE date (`EXE_SOI_DTD`), NOT the flux key** —
+that is how a cancellation in a later flux matches its original (the 9-key composite is the *unique
+prestation-within-flux id* per the schéma relationnel, so it does NOT join a régularisation to its
+original; there is no cross-flux "claim id").
+
+**Quantity fields are genuine signed counts, not coefficients.** `BIO_ACT_QSN` = *« Quantité affinée
+**signée** de biologie »* ([ER_BIO_F](https://documentation-snds.health-data-hub.fr/tables/er_bio_f/));
+it is the quantity multiplier in the amount formula `coef(BTF_TAR_COF) × prix(BSE_REM_PRU) ×
+BIO_ACT_QSN × taux` ([tables affinées](https://documentation-snds.health-data-hub.fr/snds/fiches/tables_affinees)).
+The pricing coefficient is the *separate* `BTF_TAR_COF`. (`PRS_ACT_QTE` is the prestation-level
+quantity — constant within a prestation, usually 1 — not the per-act count.)
+
+**Empirically confirmed (biology tables, COND cohort):** a régularisation is overwhelmingly a
+**reimbursement-RATE correction** (e.g. `−1` at taux 80% + `+1` at taux 100% in a later flux, same
+`PFS_PRE_NUM`/specialty/act/care-date) — the act *did* happen, the billing rate was fixed. Of 947
+negative-containing care-groups: 857 net `>0`, **42 net `=0` (true ghosts → drop)**, 48 orphan
+negatives (original outside window → floor at 0). **941/947 share one `PFS_PRE_NUM`**, so netting
+can keep the individual prescriber. Magnitude: line count 330,250 → netted quantity 327,909 (≈ 0.7%).
+
+**House rule when a prescriber-IV design needs the prescriber** (dropped by the official patient-level grouping):
+- Net at **`(BEN_NIR_PSA, BEN_RNG_GEM, EXE_SOI_DTD, BEN_RES_DPT, PSE_SPE_COD, PSP_SPE_COD,
+  PFS_PRE_NUM, BIO_PRS_IDE)`**, `SUM(BIO_ACT_QSN)`, **keep net `> 0`** (drops ghosts, floors orphans).
+- `N_TESTS_* = SUM(net BIO_ACT_QSN)` (NOT `COUNT(*)`); `TESTED_COND = (net COND quantity > 0)` (NOT
+  `MAX(COND_RELEVANT_FLAG)`, which would mark a cancelled-only month as tested).
+- Do this **upstream** (on `cond_bio`, before building the patient/provider panel) so ghost claims
+  never reach any count or the modal-prescriber assignment.
+- `ORG_AFF_BEN` is not in the key above; adding it gives exact official-recipe fidelity but is
+  near-immaterial (care-groups are 99.9% single-affiliation). Exclude administrative bio codes
+  upstream (`BSE_PRS_NAT` / act-code filter per your project).
+
+**Fact-check sources** (all on `documentation-snds.health-data-hub.fr`): régularisation rule →
+`/snds/fiches/sas_prestation_dcir`; netting keys → `/omop/documentation_etl/traitements_preliminaires/dcir_intermediaire`;
+`BIO_ACT_QSN` → `/tables/er_bio_f/`; amount formula → `/snds/fiches/tables_affinees`.

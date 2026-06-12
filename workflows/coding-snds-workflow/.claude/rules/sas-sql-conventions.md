@@ -330,14 +330,7 @@ BIO_ACT_QSN × taux` ([tables affinées](https://documentation-snds.health-data-
 The pricing coefficient is the *separate* `BTF_TAR_COF`. (`PRS_ACT_QTE` is the prestation-level
 quantity — constant within a prestation, usually 1 — not the per-act count.)
 
-**Empirically confirmed (biology tables, COND cohort):** a régularisation is overwhelmingly a
-**reimbursement-RATE correction** (e.g. `−1` at taux 80% + `+1` at taux 100% in a later flux, same
-`PFS_PRE_NUM`/specialty/act/care-date) — the act *did* happen, the billing rate was fixed. Of 947
-negative-containing care-groups: 857 net `>0`, **42 net `=0` (true ghosts → drop)**, 48 orphan
-negatives (original outside window → floor at 0). **941/947 share one `PFS_PRE_NUM`**, so netting
-can keep the individual prescriber. Magnitude: line count 330,250 → netted quantity 327,909 (≈ 0.7%).
-
-**House rule when a prescriber-IV design needs the prescriber** (dropped by the official patient-level grouping):
+**House rule when you need provider IDs** (dropped by the official patient-level grouping):
 - Net at **`(BEN_NIR_PSA, BEN_RNG_GEM, EXE_SOI_DTD, BEN_RES_DPT, PSE_SPE_COD, PSP_SPE_COD,
   PFS_PRE_NUM, BIO_PRS_IDE)`**, `SUM(BIO_ACT_QSN)`, **keep net `> 0`** (drops ghosts, floors orphans).
 - `N_TESTS_* = SUM(net BIO_ACT_QSN)` (NOT `COUNT(*)`); `TESTED_COND = (net COND quantity > 0)` (NOT

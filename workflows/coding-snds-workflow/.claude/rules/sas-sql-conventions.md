@@ -253,3 +253,49 @@ Always check existence before referencing. A missing table causes a hard PROC SQ
 - Use `cats()` for string concatenation: `cats(SOR_ANN, SOR_MOI)` (no spaces)
 - `CASE WHEN ... THEN ... ELSE ... END` works identically in PROC SQL and Oracle SQL
 - Avoid `HAVING` with aggregated `CASE WHEN` — compute derived column in subquery first
+- **Never `GROUP BY` an EXPRESSION against an Oracle table** (`group by year(x)`, `group by
+  calculated col`, `group by substr(...)`) — it triggers a PROC SQL *remerge* that pulls the full
+  table into WORK. Group by RAW columns; decode in a follow-up WORK DATA step.
+
+---
+
+## 11. Column types — VERIFY, don't assume (the silent-wrong-result trap)
+
+DCIR/PMSI date and année-mois fields are NOT all the same type, and a literal of the wrong type fails
+*silently* (matches nothing / everything) rather than erroring:
+
+| Field family | Type | Filter literal |
+|---|---|---|
+| `FLX_DIS_DTD`, `EXE_SOI_DTD`, `*_DTD` (dates) | **DATETIME** (Oracle DATE; shows as DATETIME20.) | date literal `"01JAN2018"d` — correct ONLY under Oracle pushdown |
+| `EXE_SOI_AMD`, `*_AMD` (année-mois) | **CHAR** `'YYYYMM'` | char literal `"201801"` (lexicographic = chronological) |
+
+- A date literal vs a DATETIME column is correct only because it is **pushed to Oracle** (compared as
+  an Oracle DATE). If a predicate is ever evaluated SAS-side, date(~21000) vs datetime(~1.8e9) →
+  silent empty/garbage. Confirm pushdown with a one-period probe (prunes → minutes, not hours).
+- `EXE_SOI_DTD > '01JAN2100'd` is the date-vs-datetime guard: a real datetime ≫ 51500, so it routes
+  to `year(datepart(...))`.
+- **Confirm every filter/join/group column's type with `dictionary.columns` / `proc contents` before
+  writing the predicate — never from memory or a comment.**
+
+## 12. Data-extraction pre-flight (MANDATORY before any portal submission of a pull script)
+
+Portal scripts cannot be tested locally; a wrong query costs hours or silently poisons everything
+downstream. **Structural/parse correctness is NOT correctness.** Before submitting:
+
+1. **VERIFY column types** (§11) — don't assume.
+2. **PROBE the partition/flux LAYOUT** (which `FLX_DIS_DTD` values exist; real monthly vs consolidated)
+   with a committed `_diag_*` that RAN — never infer from a comment or "it worked before."
+3. **RANGE, not exact-equality, on a date/partition key.** Sweep with a **half-open** range
+   `WHERE FLX_DIS_DTD >= "&begin"d AND FLX_DIS_DTD < "&nextbegin"d` (gap-free, overlap-free,
+   layout-agnostic). NEVER `= "single_date"d` — it silently collapses to a fraction if the layout
+   differs from what was assumed.
+4. **Flux window = care window + reimbursement lag (~6 months)** (claims surface at reimbursement);
+   trim the care window via the char année-mois field (datetime-safe).
+5. **BENCHMARK-GATE the output IN THE SCRIPT'S OWN LOG**: emit total rows + per-period counts and
+   compare to a known benchmark (prior-run counts, or a published table). **A rewrite is not "done"
+   until the counts match** — never ship on "it parses / looks right."
+6. **Fail-fast** `%if &SQLRC >= 8 %then %abort` after every CREATE/INSERT; **drop large
+   intermediaries** after their last consumer; header and code must agree on drops.
+
+> The most expensive SNDS mistake class is the **silent wrong result** — an under/over-pull that
+> parses cleanly. Items 1–5 exist to catch it. When in doubt, probe first.

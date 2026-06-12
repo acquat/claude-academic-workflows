@@ -22,6 +22,12 @@ paths:
 | Critical | Individual-scale output: row-per-patient/provider/facility table, one-mark-per-unit scatter, or per-unit effect vector | -20 |
 | Critical | Exported cell/bin/plotted point below the export gate (≥ 11 units AND nonzero events, or DUA value) without masking/coarsening | -15 |
 | Critical | Wrong date field in an Oracle filter (`EXE_SOI_DTD` instead of `FLX_DIS_DTD`) | -30 |
+| Critical | **Extraction rewrite not benchmark-gated** — total + per-period row counts not emitted in the log and compared to a known benchmark before declaring done | -40 |
+| Critical | **Exact-equality on a date/partition key** (`FLX_DIS_DTD = "single_date"d`) instead of a half-open RANGE — silently collapses to a fraction of the data if the layout differs | -35 |
+| Critical | **Column type assumed, not verified** — a date/char/numeric filter or join written without confirming the column type (date vs DATETIME vs char) via `dictionary.columns`/`proc contents`; risks a silent empty/garbage result | -30 |
+| Critical | **Non-obvious data assumption (layout, magnitude, type) with no probe** — built on a comment/memory/"it worked before" rather than a `_diag_*` probe that ran | -25 |
+| Critical | **`GROUP BY` an expression against an Oracle table** (remerge trap → full table pulled into WORK) | -20 |
+| Critical | **Unguarded CREATE/INSERT** that can leave a silent partial — no `%if &SQLRC >= 8 %then %abort` fail-fast | -20 |
 | Critical | Composite join missing a key (duplicate-row risk) | -30 |
 | Critical | Sentinel date (`'01JAN1600'dt`) fed into date arithmetic | -25 |
 | Critical | Claims table pulled at full-population scale (no cohort restriction) | -25 |

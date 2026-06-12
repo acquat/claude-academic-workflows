@@ -9,7 +9,7 @@ This skill governs all data construction, cleaning, and analysis work. The user 
 
 ## Before Writing Any Code
 
-1. **Understand the data before touching it.** Read documentation, check variable names, examine a few rows. Never assume column names or types — verify them.
+1. **Understand the data before touching it.** Read documentation, check variable names, examine a few rows. Never assume column names, types, **or storage structure** (how dates/keys are physically partitioned or stored — e.g. monthly vs consolidated partitions, date vs datetime) — verify them against the data dictionary or a quick probe, never from a comment or memory. A filter built on an assumed structure fails *silently* (returns the wrong rows), it does not error.
 2. **Know your unit of observation.** Before any merge, reshape, or collapse: state explicitly what the unit of observation is (hospital-year? person-quarter? firm?) and confirm it.
 3. **Know your unique identifiers.** Before merging, run the equivalent of `isid` / `duplicates report` on the key variables. If the merge key isn't unique where it should be, stop and investigate — don't let it silently create duplicates.
 4. **Ask before proceeding.** When a design choice has multiple valid approaches (sample restrictions, variable definitions, merge strategies), present the options and ask. Don't pick one silently.
@@ -56,6 +56,8 @@ This skill governs all data construction, cleaning, and analysis work. The user 
 
 - **Never brute-force a fix.** If code fails, diagnose the root cause. Don't try 5 different workarounds hoping one sticks.
 - **Never fabricate sample sizes, variable names, or data properties.** If you don't know, check.
+- **Never filter a partitioned/keyed column by exact-equality on an assumed value** (`x == "2018-01-01"`). Use a **range** (`>= a & < b`). An exact match silently returns a fraction of the data the moment the storage layout differs from what you assumed — the classic silent-wrong-result bug.
+- **Never call a rewrite "done" until its row counts match a benchmark.** Re-deriving an extraction must reproduce the known total and per-period counts (prior run, or a published table) — "it parses / looks right" is not evidence. Emit the counts and compare.
 - **Never proceed past a data quality issue without flagging it.** An outlier, a merge failure, a suspicious pattern — raise it immediately.
 - **Never overwrite raw data.** All transformations produce new files in `working/` or `output/`.
 - **Never silently drop observations.** Every `drop if` or `keep if` must be logged with counts.

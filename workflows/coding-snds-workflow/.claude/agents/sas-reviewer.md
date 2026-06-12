@@ -47,6 +47,31 @@ Produce a thorough, actionable code review report. You do NOT edit files — you
 - [ ] Death-indicator reconstruction uses the documented combination of sources.
   > *The bracketed specifics above are examples — replace with your project's outcomes, code lists, and registries in `snds-data.md`. The pattern (document every code list; distinguish zero from missing; clean sentinels) is universal.*
 
+### 4b. Extraction correctness — the silent-wrong-result class — **load-bearing**
+*The most expensive SNDS bug is not a crash; it is an extraction that parses cleanly but pulls the
+WRONG rows, then silently poisons everything downstream (caught only after a multi-hour portal run).
+Hunt these — structural/parse correctness is NOT correctness.*
+- [ ] **Column type/layout VERIFIED, not assumed.** Every column in a `where`/join/group has its type
+      confirmed via `dictionary.columns` / `proc contents` — not from memory or a comment. (SNDS:
+      `FLX_DIS_DTD`, `EXE_SOI_DTD`, `*_DTD` are **DATETIME**; `EXE_SOI_AMD`, `*_AMD` are **CHAR**
+      `'YYYYMM'`. A date literal vs a DATETIME column is correct ONLY under Oracle pushdown — if it
+      ever evaluates SAS-side it silently matches nothing/everything.)
+- [ ] **Partition/flux LAYOUT probed, not inferred.** Which `FLX_DIS_DTD` values exist (real monthly
+      vs consolidated) is established by a `_diag_*` probe that RAN — never assumed from a comment or
+      "it worked before."
+- [ ] **RANGE, never exact-equality, on a date/partition key.** Use half-open `FLX_DIS_DTD >= a AND
+      FLX_DIS_DTD < b` (gap-free, no double-count). `FLX_DIS_DTD = "single_date"d` silently collapses
+      to a fraction of the data the moment the storage layout differs from what was assumed — flag
+      CRITICAL.
+- [ ] **Flux window = care window + reimbursement lag (~6 months)** (claims surface at reimbursement,
+      not at care); trim the care window via the char année-mois field (datetime-safe).
+- [ ] **Output is BENCHMARK-GATED in the script's own log.** The script emits total rows + per-period
+      counts, compared to a known benchmark (prior-run counts, or a published table). A rewrite is NOT
+      "done" until its counts match — never accept "it parses / looks right."
+- [ ] **Fail-fast** `%if &SQLRC >= 8 %then %abort` after every `CREATE`/`INSERT` (a failed insert does
+      not abort SAS by itself → it silently leaves a partial table for the next step to consume); drop
+      large intermediaries after their last consumer.
+
 ### 5. Sample & cohort integrity
 - [ ] Cohort reproducible from the script (every filter explicit; no "assume table X exists" without a named prerequisite).
 - [ ] Row counts audited after **every** major data step (`proc sql; select count(*), count(distinct <id>) ...; quit;`).

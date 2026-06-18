@@ -14,6 +14,7 @@ Claude as an empirical coding assistant inside the **French SNDS secure enclave*
 │   ├── export-compliance.md        # ≥11 double gate, secret secondaire, export-gate annex in every script
 │   ├── sas-sql-conventions.md      # Oracle/SQL: partition keys, 9-key joins, safe-replace
 │   ├── sas-code-conventions.md     # SAS standards (header, macros, paths, sample audits)
+│   ├── snds-r-portal.md            # R provisioning gate: request RStudio, package status, Oracle-from-R — auto-injected on .R edits
 │   ├── quality-gates.md · verification-protocol.md · replication-protocol.md
 │   └── plan-first-workflow.md · orchestrator-protocol.md · session-logging.md
 ├── agents/  sas-reviewer           # PII / disclosure / SNDS anti-patterns — read-only reviewer
@@ -22,7 +23,7 @@ Claude as an empirical coding assistant inside the **French SNDS secure enclave*
 │   ├── snds-data.md                # your project lookup: tables, code lists, PII, DUA threshold
 │   ├── snds-export-rules.md        # cited legal basis (arrêté 2024, MR-005, CGU) + référent questions
 │   └── snds-export-checklist.md    # mechanical pre-export gate
-├── templates/ · hooks/ · settings.json
+├── templates/ · hooks/ (rigor-inject · verify-reminder · snds-r-rules) · settings.json
 ```
 
 Plus `/rigor` and `/empirical-coding-discipline` from this repo's `skills/` library. For downstream R analysis tooling, see **[Other helpful resources](../../ATTRIBUTIONS.md)**.

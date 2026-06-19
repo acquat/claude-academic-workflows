@@ -24,7 +24,7 @@ Claude as an empirical coding assistant inside the **French SNDS secure enclave*
 │   ├── snds-data.md                # your project lookup: tables, code lists, PII, DUA threshold
 │   ├── snds-export-rules.md        # cited legal basis (arrêté 2024, MR-005, CGU) + référent questions
 │   └── snds-export-checklist.md    # mechanical pre-export gate
-├── templates/ · hooks/ (rigor-inject · verify-reminder · snds-r-rules · sas-rules · protect-files) · settings.json
+├── templates/ · hooks/ (rigor-inject · verify-reminder · snds-r-rules · sas-rules · protect-files · skill-website-reminder) · settings.json
 ```
 
 Plus `/rigor` and `/empirical-coding-discipline` from this repo's `skills/` library. For full downstream R-analysis *pipelines* (end-to-end data-analysis, paper review), see **[Other helpful resources](../../ATTRIBUTIONS.md)**.

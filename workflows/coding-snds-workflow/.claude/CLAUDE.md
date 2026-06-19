@@ -35,7 +35,7 @@
 R/RStudio is officially supported on the CNAM portal (same Oracle backend as SAS) but is **not
 provisioned automatically** — a new habilitation gets SAS Guide only. **Before producing runnable
 R, surface the access procedure** (full detail: [`rules/snds-r-portal.md`](rules/snds-r-portal.md),
-auto-injected on any `.R` edit by [`hooks/snds-r-rules.sh`](hooks/snds-r-rules.sh)):
+auto-injected on any `.R` edit by [`hooks/snds-r-rules.py`](hooks/snds-r-rules.py)):
 
 - **Request RStudio Workbench:** email `support-national@assurance-maladie.fr`, subject containing
   `[Création Habilitation RStudio]`, with portal login id(s) + connection email + région/profil(s);

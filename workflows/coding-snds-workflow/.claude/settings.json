@@ -19,18 +19,18 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/protect-files.sh",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/protect-files.py",
             "timeout": 5
           },
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/snds-r-rules.sh",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/snds-r-rules.py",
             "timeout": 5,
             "statusMessage": "SNDS R-portal gate"
           },
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/sas-rules.sh",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/sas-rules.py",
             "timeout": 5,
             "statusMessage": "SAS/SNDS conventions"
           }

@@ -68,6 +68,7 @@ un-provisioned package without flagging it to the user.
   it rather than re-rolling these per script.
 
 ## 4. Cross-references
+Generic R style (palette, ggsave dims, RDS pattern, checklist): [`r-code-conventions.md`](r-code-conventions.md) ·
 Security + PII: [`snds-data-security.md`](snds-data-security.md) · Export gate (≥ 11, annex):
 [`export-compliance.md`](export-compliance.md) · Oracle/SQL discipline (partition key, joins,
 safe-replace): [`sas-sql-conventions.md`](sas-sql-conventions.md) · Project tables / code lists /

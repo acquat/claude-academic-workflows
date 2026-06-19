@@ -73,12 +73,13 @@ auto-injected on any `.R` edit by [`hooks/snds-r-rules.sh`](hooks/snds-r-rules.s
 
 | Command | What it does |
 |---|---|
-| `/review-sas [file or dir]` | SAS code review (uses the `sas-reviewer` agent) — SNDS anti-patterns, PII, disclosure |
+| `/review-sas [file or dir]` | SAS code review (uses the `sas-reviewer` agent) — SNDS anti-patterns, PII, disclosure. For portal-pull extraction scripts, the deeper `sas-extraction-reviewer` agent gates the silent-wrong-result class. |
+| `/review-r [file or dir]` | R code review (uses the `r-reviewer` agent) — reproducibility, Oracle-from-R, figures, export-disclosure |
 | `/sds-doc <variable>` | Look up an SNDS variable / table / code list in the authoritative sources |
 | `/empirical-coding-discipline` | Audit-every-step rigor (verify units/identifiers, never brute-force) |
 | `/rigor` | The research-rigor standard (auto-loaded each session) |
 
-The `sas-reviewer` agent is bundled here. For general R-analysis and manuscript tooling that pairs well with this workflow, see **Other helpful resources** in the repo README.
+The `sas-reviewer`, `sas-extraction-reviewer`, and `r-reviewer` agents are bundled here (SAS and R review, plus the deep portal-extraction gate). For manuscript tooling and full R-analysis *pipelines* (lit review, paper review, end-to-end data-analysis) that pair well with this workflow, see **Other helpful resources** in the repo README.
 
 ---
 

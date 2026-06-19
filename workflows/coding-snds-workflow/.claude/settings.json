@@ -19,9 +19,20 @@
         "hooks": [
           {
             "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/protect-files.sh",
+            "timeout": 5
+          },
+          {
+            "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/snds-r-rules.sh",
             "timeout": 5,
             "statusMessage": "SNDS R-portal gate"
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/sas-rules.sh",
+            "timeout": 5,
+            "statusMessage": "SAS/SNDS conventions"
           }
         ]
       }

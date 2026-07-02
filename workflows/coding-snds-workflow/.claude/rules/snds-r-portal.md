@@ -40,17 +40,39 @@ glue, lubridate, haven, tidyverse. **Not** in prod (request first, or flag befor
 `marginaleffects`, `survey`, `binsreg`, `logistf`. → Don't write code that depends on an
 un-provisioned package without flagging it to the user.
 
+⚠️ **A prod package can differ from CRAN in which functions it EXPORTS.** Observed: CNAM-prod
+`lubridate` does **not** export `months()` (`lubridate::months(n)` → *"'months' n'est un objet
+exporté…"*) — use the core constructor `lubridate::period(n, units = "month")` instead. Prefer the
+most-core constructor over convenience aliases (`months()`, `days()`, `years()`) in portal code.
+
 ## 2. Operational constraints (CNAM Accès-à-R guide)
 
 - **Per-user memory is capped** ("Cannot allocate memory" is common). CNAM's own prescription is a
   **hybrid**: **datamanagement in SAS, modélisation/graphique in R, push work to the Oracle engine
   maximally.** Keep the large claims tables server-side; pull only the small aggregated /
-  cohort-level result (the analysis-ready extract) into R. Use `gc()` / data.table when tight.
+  cohort-level result (the analysis-ready extract) into R. **Aggregate a tens-of-millions-row table
+  to the analysis grain IN Oracle (a raw-column `GROUP BY`, pushed down) and pull only the reduced
+  result — never `dbGetQuery("SELECT * FROM <huge table>")`** (OOM). When a job holds several big
+  intermediates, free each with `rm()` + `gc()` before the next (a loop that keeps every fit's
+  design matrix alive is the classic OOM). Use `data.table` when tight.
 - **Storage is shared SAS↔R** (sasdata1, project spaces, ORAUSER) → SAS-built ORAUSER tables can be
   read directly from R, no re-export.
-- **Home RStudio is tiny / system-reserved — never save there.** RDS + outputs go to sasdata1 or a
-  project space. **ORAUSER is not storage — drop any temp (`*_R`) table after use.** Max 3
-  simultaneous sessions.
+- 🔴 **Home root is the shared CITRIX space, NOT your user space** (CNAM communiqué 17/03/2025,
+  *"Espace saturé → Déplacement des tables R vers Rdata"*). Files R saves at `~/` **or in any
+  user-created Home subfolder** fill the shared Citrix space (normally only
+  `Citrix_documents`/`Citrix_PARTAGE-xx`), whose saturation has actually **blocked the portal-wide
+  import/export tool.** So: **never** `saveRDS`/`ggsave`/`fwrite`/`dir.create` at `~/` or a Home
+  subfolder — write to **`~/sasdata1/…`** or **`~/rdata/`** (a sasdata1 subfolder with a Home
+  shortcut): `saveRDS(t, "~/rdata/x.RDS")`. Move strays with `file.copy("~/<f>", "~/rdata/<f>")`
+  (folders: `+ recursive=TRUE`, destination must exist) then `file.remove("~/<f>")`.
+- ⚠️ **`sasdata1`/`rdata` are quota-limited (default ~1 MB at account opening).** A disk/quota error
+  on a big `saveRDS`/`ggsave`/`fwrite` means **request an extension** (externals email
+  support-national, subject `[CREATION] Extension de Quota`, body = SNDS id + profil + région; AM
+  internals via s@m national), **not** a code bug.
+- **ORAUSER is not storage — drop any temp (`*_R`) table after use.** Max 3 simultaneous sessions.
+- **Figures:** don't `print()` many ggplots to the RStudio Plots pane (portal render crash) —
+  `ggsave` to `~/sasdata1`, then view via `rstudioapi::viewer()` on a `tempdir()` copy (or the Files
+  pane → View File). One deliberate `print()` is fine; a loop of them is the hazard.
 
 ## 3. Conventions for R that hits Oracle (mirror the SAS discipline)
 
@@ -58,6 +80,16 @@ un-provisioned package without flagging it to the user.
   Query with `DBI::dbGetQuery` (SQL) or `dplyr`/`dbplyr`.
 - **Oracle table names UPPERCASE**, start with a letter. **Pure ASCII** in scripts (the portal is
   Latin-1).
+- 🔴 **From R, your ORAUSER tables live in YOUR OWN Oracle schema (named after your portal id) —
+  reference them UNQUALIFIED.** SAS's `ORAUSER` libname is just an alias for that personal schema;
+  there is no Oracle schema literally called `ORAUSER`, so `SELECT … FROM ORAUSER.MY_TABLE` from R →
+  **ORA-00942 "table inexistante"**. Use `SELECT … FROM MY_TABLE` (Oracle resolves unqualified names
+  to your schema by default; no `ALTER SESSION` needed). A table R creates unqualified lands in your
+  schema and SAS then sees it as `ORAUSER.<name>` (round-trips).
+- ⚠️ **Oracle empty string `''` IS NULL.** A SAS blank-id filter translated literally →
+  `TRIM(x) NOT IN ('','00000000')` expands to `… <> NULL …` = never true → **silently 0 rows**. Use
+  `TRIM(x) IS NOT NULL` to drop blanks (plus `TRIM(x) <> '00000000'` for the placeholder); never
+  `x <> ''` / `NOT IN ('' …)` in Oracle.
 - **Two-step date rule:** do all-Oracle filtering with translatable predicates → pull the small
   result → derive DATEPART / year / interval expressions **in R**. Never push R/SAS date functions
   into Oracle SQL (they translate to a **silent NULL**). Filter on the **partition key**

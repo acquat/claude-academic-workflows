@@ -344,3 +344,43 @@ quantity — constant within a prestation, usually 1 — not the per-act count.)
 **Fact-check sources** (all on `documentation-snds.health-data-hub.fr`): régularisation rule →
 `/snds/fiches/sas_prestation_dcir`; netting keys → `/omop/documentation_etl/traitements_preliminaires/dcir_intermediaire`;
 `BIO_ACT_QSN` → `/tables/er_bio_f/`; amount formula → `/snds/fiches/tables_affinees`.
+
+---
+
+## 14. DCIR table layout across the ~2013 migration — live vs historical (frozen) tables
+
+The DCIR was migrated around 2013. The prestation tables split into two families with **different
+names and layouts** — assuming one continuous `ER_PRS_F` reaching back to the 2000s silently
+under-pulls.
+
+- **Live `ER_PRS_F` / `ER_BIO_F`** — the post-migration tables, organised as **real monthly fluxes**
+  (≈12 `FLX_DIS_DTD` values per care-year). Depending on the instance, the live table may **not**
+  reach the earliest pre-migration years — the boundary flux year is often dropped at migration.
+- **Frozen historical archives** — the older real-monthly fluxes live in **separately-named year
+  tables**, e.g. `ER_PRS_F_2006 … ER_PRS_F_2012` (and analogous `ER_BIO_F_*`). These are frozen
+  snapshots, **not** part of the live table.
+- **Consequence:** a study window reaching before the migration boundary must query the archive
+  tables explicitly. A single filter on live `ER_PRS_F` returns **0 (or a silent fraction)** for
+  those years — the classic silent-wrong-result.
+- **Never assume a given year is reachable in the live table — PROBE it:** `dictionary.tables` for
+  `ER_PRS_F%` / `ER_BIO_F%` to enumerate archive variants, plus a tiny cohort-restricted `COUNT`
+  over one flux month of the target year. A live count of **0** for a pre-migration month is itself
+  the finding (archive-only), not an error.
+- **PMSI is per-year too:** annual tables are named by year (`T_MCOyyB`, …) — confirm existence with
+  `%sysfunc(exist(oravue.T_MCOyyB))` before referencing, don't assume the loop bound.
+
+## 15. Push the reduction to Oracle — never pull a large table whole
+
+The single biggest efficiency **and stability** rule: do the heavy aggregation/join **in Oracle** and
+pull only the reduced result. Pulling a tens-of-millions-row table whole (into WORK, or into R) can
+exhaust memory/quota and **hang the portal**.
+
+- A function or `DISTINCT` over an **expression** against a large Oracle table often **won't push
+  down**: `count(distinct CATS(a,b))`, `GROUP BY substr(...)` / `year(x)` triggers a **remerge** /
+  row-by-row transfer that drags the whole table into WORK and can **freeze the session** (see §10).
+- **Reduce first** with a raw-column `GROUP BY` into a small table, **then** apply the function /
+  `DISTINCT` over the small result.
+- Build a small cohort-key table (letter-led ORAUSER name) and **join it inside Oracle** so a big
+  base-table scan stays server-side, rather than pulling the base table and filtering in WORK/R.
+- Corollary for R: aggregate to the analysis grain **server-side**, pull only that extract (see
+  `snds-r-portal.md` §2).

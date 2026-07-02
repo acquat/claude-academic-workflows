@@ -26,7 +26,7 @@ Each workflow folder has its own README with the full file list and setup steps.
 
 ## How it's organized
 
-- **`workflows/`** — five self-contained `.claude/` configs. Each bundles its `CLAUDE.md` brain, its rules, any specialist agents its skills need, two small hooks (auto-load the rigor standard at session start; a verify-after-edit nudge), and a portable `settings.json`.
+- **`workflows/`** — five self-contained `.claude/` configs. Each bundles its `CLAUDE.md` brain, its rules, any specialist agents its skills need, two small hooks (auto-load the rigor standard at session start; a verify-after-edit nudge) plus any workflow-specific ones (coding-snds injects its SAS and R-portal rules on edit), and a portable `settings.json`.
 - **`skills/`** — the two cross-cutting rigor skills the workflows share: `/rigor` (never fabricate parameters; cite or stop — auto-loaded by every workflow's session-start hook) and `/empirical-coding-discipline` (audit every step; verify units and identifiers — used by the writing and coding workflows).
 - A **shared working discipline** rides in every workflow: plan first (plans saved to disk), an orchestrator loop (implement → verify → review → fix → score), session logging at three moments, and 80/90/95 quality gates.
 

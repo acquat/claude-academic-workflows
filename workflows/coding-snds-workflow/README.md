@@ -14,18 +14,20 @@ Claude as an empirical coding assistant inside the **French SNDS secure enclave*
 │   ├── export-compliance.md        # ≥11 double gate, secret secondaire, export-gate annex in every script
 │   ├── sas-sql-conventions.md      # Oracle/SQL: partition keys, 9-key joins, safe-replace
 │   ├── sas-code-conventions.md     # SAS standards (header, macros, paths, sample audits)
+│   ├── snds-r-portal.md            # R provisioning gate: request RStudio, package status, Oracle-from-R — auto-injected on .R edits
+│   ├── r-code-conventions.md       # R standards (reproducibility, Oracle-from-R, figures, export discipline)
 │   ├── quality-gates.md · verification-protocol.md · replication-protocol.md
 │   └── plan-first-workflow.md · orchestrator-protocol.md · session-logging.md
-├── agents/  sas-reviewer           # PII / disclosure / SNDS anti-patterns — read-only reviewer
-├── skills/  review-sas/ · sds-doc/ # SAS review; never-guess SNDS documentation lookup
+├── agents/  sas-reviewer · sas-extraction-reviewer · r-reviewer   # SAS + R review; deep portal-extraction gate (read-only)
+├── skills/  review-sas/ · review-r/ · sds-doc/ # SAS + R review; never-guess SNDS documentation lookup
 ├── references/
 │   ├── snds-data.md                # your project lookup: tables, code lists, PII, DUA threshold
 │   ├── snds-export-rules.md        # cited legal basis (arrêté 2024, MR-005, CGU) + référent questions
 │   └── snds-export-checklist.md    # mechanical pre-export gate
-├── templates/ · hooks/ · settings.json
+├── templates/ · hooks/ (rigor-inject · verify-reminder · snds-r-rules · sas-rules · protect-files · skill-website-reminder) · settings.json
 ```
 
-Plus `/rigor` and `/empirical-coding-discipline` from this repo's `skills/` library. For downstream R analysis tooling, see **[Other helpful resources](../../ATTRIBUTIONS.md)**.
+Plus `/rigor` and `/empirical-coding-discipline` from this repo's `skills/` library. For full downstream R-analysis *pipelines* (end-to-end data-analysis, paper review), see **[Other helpful resources](../../ATTRIBUTIONS.md)**.
 
 ## How to use it
 

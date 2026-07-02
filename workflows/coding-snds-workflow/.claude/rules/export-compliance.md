@@ -32,9 +32,13 @@ confidentialité » guide IS the operative ruleset. The verified French health-d
 Every aggregated cell/bin/point in ANY output must rest on **≥ 11 individuals AND ≥ 11 events**
 (deaths, hospitalizations, treated…) — or the event count is exactly 0. Applies to displayed
 values AND recoverable ones (`N × rate` reveals the count; displayed categories imply their
-complement). Put `%let min_cell = 11;` (or your DUA's confirmed value) at the top of every
-output-producing script. ⚠️ Estimation-sample filters (e.g. "providers with ≥ 10 patients") are
-NOT export gates — export gates apply to what is *shown*.
+complement). **The complement is a cell too:** a bin with events also needs
+**≥ 11 NON-events** (`N − events ≥ 11`) — a near-saturated bin (say 11,210 units, 11,204 events)
+otherwise discloses its 6 identifiable non-events. Gate formula:
+`N ≥ 11 AND (events = 0 OR (events ≥ 11 AND N − events ≥ 11))`. Put `%let min_cell = 11;` (or
+your DUA's confirmed value) at the top of every output-producing script. ⚠️ Estimation-sample
+filters (e.g. "providers with ≥ 10 patients") are NOT export gates — export gates apply to what
+is *shown*.
 
 ### 2. Aggregate first, suppress second, then secret secondaire
 Prefer **coarser bins** (quintiles not deciles; broader age bands; pooled years) over masking.
@@ -65,10 +69,19 @@ Export a rate only if **denominator ≥ 11 AND implied numerator ≥ 11 (or 0, m
 100 % — and avoid ≳ 90 % quasi-unanimous — cells on sensitive characteristics within a
 recognizable subgroup (non-inférence): coarsen until the cell diversifies.
 
-### 7. Amount (€) cells: dominance check
+### 7. Amount (€) / continuous cells: dominance check, and gate them differently
 For any exported €/volume aggregate: no single contributor (patient, provider, facility) may
 account for **≥ 85 %** of the cell (dominance rule — confirmed for French business statistics,
-adopted here by analogy). Emit the max-share per cell in the reviewer annex only.
+adopted here by analogy).
+- **The binary events-gate is meaningless for a continuous outcome** (its "event sum" is a €
+  total, not a count) — gate continuous cells on **unit count ≥ 11 + the dominance rule** instead.
+- Compute the share on **absolute values** (`max(|x|) / sum(|x|)`) — claims data carry negative
+  correctives, and a mixed-sign `max/sum` is not a share (can exceed 1 or pass on a netted-to-zero
+  cell).
+- ⚠️ **Never write the RAW max-share into anything that leaves the enclave** — the annex ships
+  with the export request, and `max-share × cell total = the top contributor's exact amount`, an
+  individual-scale MAX (rule 5 violation by the back door). Put a **boolean** `DOM_OK` in the
+  annex; the raw share stays in the enclave-only log (DIAG stream).
 
 ### 8. Auto-emit the reviewer annex + export-gate check (mandatory step)
 Every script with exportable outputs ends with an **export-gate block** that (a) writes
@@ -87,15 +100,18 @@ quit;
 
 proc sql noprint;              /* gate assertion — PASS/FAIL in the log                */
   select min(n_units),
-         min(case when n_events > 0 then n_events end)
-    into :min_n trimmed, :min_e trimmed
+         min(case when n_events > 0 then n_events end),
+         min(case when n_events > 0 then n_units - n_events end)  /* complement arm */
+    into :min_n trimmed, :min_e trimmed, :min_c trimmed
   from fig1_export_annex;
 quit;
-%put EXPORT-GATE fig1: min N=&min_n, min nonzero events=&min_e
-     %sysfunc(ifc(&min_n >= &min_cell and &min_e >= &min_cell, PASS, FAIL — mask or coarsen));
+%put EXPORT-GATE fig1: min N=&min_n, min nonzero events=&min_e, min complement=&min_c
+     %sysfunc(ifc(&min_n >= &min_cell and &min_e >= &min_cell and &min_c >= &min_cell,
+                  PASS, FAIL — mask or coarsen));
 ```
 
-R equivalent: `dplyr::count()` the plotted bins, `stopifnot(min(n) >= 11)` before `ggsave()`.
+R equivalent: count the plotted bins and assert
+`stopifnot(N >= 11, EVENTS == 0 | (EVENTS >= 11 & N - EVENTS >= 11))` before `ggsave()`.
 The annex ships with the export request (flagged "reviewer annex — not for publication"); it is
 what lets the security reviewer approve quickly.
 

@@ -13,6 +13,7 @@
 - **Confidentiality first** ([HARD RULES](rules/snds-data-security.md)) — identifier-class variables never leave the enclave, never hit a `.log` or flat file; every export passes statistical-disclosure-control (minimum cell size).
 - **Export-safe by construction** ([export-compliance](rules/export-compliance.md)) — every output meets the export gate as generated: ≥ 11 double gate (units AND events per cell/bin/point), no individual-scale outputs (patients, providers, facilities), no MIN/MAX, scripts end with the export-gate annex + PASS/FAIL check. Cited legal basis + référent question list: [references/snds-export-rules.md](references/snds-export-rules.md); pre-submission gate: [references/snds-export-checklist.md](references/snds-export-checklist.md).
 - **Verify defensively** — you cannot cheaply re-run on the portal. After every `CREATE TABLE`: `proc contents` + a `count(*)`/`count(distinct id)`. See [verification-protocol](rules/verification-protocol.md).
+- **R needs provisioning first** — the CNAM portal gives **SAS Guide only** by default; R/RStudio must be requested. **Whenever the user asks to write/run/port/debug ANY R, FIRST surface the RStudio access procedure ([`rules/snds-r-portal.md`](rules/snds-r-portal.md)) unless RStudio Workbench is already confirmed provisioned.** R may be authored locally meanwhile, but say plainly it can't run on the portal until the habilitation lands.
 - **Rigor always** — [`/rigor`] + [no fabrication]; never guess an SNDS variable/code — confirm via `/sds-doc`.
 - **Plan first** — plan mode before non-trivial pipeline work; save to `.claude/quality_reports/plans/`.
 - **Quality gates** — nothing ships below 80/100; security/disclosure violations are never overridable.
@@ -26,6 +27,27 @@
 - **Key tables (fill per project):** `ER_PRS_F` (claims/encounter), `ER_BIO_F` (biology), `T_MCO…` (PMSI hospital + chainage), `IR_IMB_R` / `IR_BEN_R` (registry/demographics). Document yours in [`snds-data.md`](references/snds-data.md).
 - **PII (CRITICAL):** `BEN_NIR_PSA`, `BEN_NIR_ANO`, `BEN_IDT_ANO`, `NIR_ANO_17` are identifier-class — enclave only. See [snds-data-security.md](rules/snds-data-security.md).
 - **Oracle query rules:** partition-key filter (`FLX_DIS_DTD`), full composite join keys, `_v2` safe-replace, existence guards — see [sas-sql-conventions.md](rules/sas-sql-conventions.md).
+
+---
+
+## R on the SNDS Portal (provisioning gate)
+
+R/RStudio is officially supported on the CNAM portal (same Oracle backend as SAS) but is **not
+provisioned automatically** — a new habilitation gets SAS Guide only. **Before producing runnable
+R, surface the access procedure** (full detail: [`rules/snds-r-portal.md`](rules/snds-r-portal.md),
+auto-injected on any `.R` edit by [`hooks/snds-r-rules.py`](hooks/snds-r-rules.py)):
+
+- **Request RStudio Workbench:** email `support-national@assurance-maladie.fr`, subject containing
+  `[Création Habilitation RStudio]`, with portal login id(s) + connection email + région/profil(s);
+  ~1–2 weeks → the RStudio Workbench icon appears beside SASGuide 8. Use R **4.4.3**.
+- **Packages:** personal install is blocked (request via `[Création Demande de package RSTUDIO]`).
+  Already in prod: `fixest`, `brglm2`, `ROracle`, `DBI`, `data.table`, `dplyr`, `dbplyr`, `ggplot2`,
+  `sandwich`, `lmtest`, `modelsummary`, `broom`, `glue`, `lubridate`, `haven`, `tidyverse`. Not in
+  prod (flag before using): `marginaleffects`, `survey`, `binsreg`, `logistf`.
+- **Constraints:** per-user memory is capped → CNAM prescribes the **hybrid** (datamanagement in
+  SAS, modelling/figures in R, push to Oracle). Storage is shared SAS↔R (read ORAUSER tables
+  directly); never save to Home; drop temp `*_R` ORAUSER tables after use; UPPERCASE Oracle names;
+  pure ASCII; two-step date rule (filter in Oracle, derive dates in R). Max 3 sessions.
 
 ---
 
@@ -51,12 +73,13 @@
 
 | Command | What it does |
 |---|---|
-| `/review-sas [file or dir]` | SAS code review (uses the `sas-reviewer` agent) — SNDS anti-patterns, PII, disclosure |
+| `/review-sas [file or dir]` | SAS code review (uses the `sas-reviewer` agent) — SNDS anti-patterns, PII, disclosure. For portal-pull extraction scripts, the deeper `sas-extraction-reviewer` agent gates the silent-wrong-result class. |
+| `/review-r [file or dir]` | R code review (uses the `r-reviewer` agent) — reproducibility, Oracle-from-R, figures, export-disclosure |
 | `/sds-doc <variable>` | Look up an SNDS variable / table / code list in the authoritative sources |
 | `/empirical-coding-discipline` | Audit-every-step rigor (verify units/identifiers, never brute-force) |
 | `/rigor` | The research-rigor standard (auto-loaded each session) |
 
-The `sas-reviewer` agent is bundled here. For general R-analysis and manuscript tooling that pairs well with this workflow, see **Other helpful resources** in the repo README.
+The `sas-reviewer`, `sas-extraction-reviewer`, and `r-reviewer` agents are bundled here (SAS and R review, plus the deep portal-extraction gate). For manuscript tooling and full R-analysis *pipelines* (lit review, paper review, end-to-end data-analysis) that pair well with this workflow, see **Other helpful resources** in the repo README.
 
 ---
 

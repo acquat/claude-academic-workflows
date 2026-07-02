@@ -38,6 +38,15 @@
 | [e.g. biology test] | NABM | […] | |
 | [e.g. drug] | ATC / CIP | […] | |
 
+> ⚠️ **Audit every code in a clinical indicator list for billing-supplement status.** French
+> nomenclatures (NABM, CCAM) mix genuine assays/procedures with **« cotations supplémentaires »**
+> — billing supplements that add a fee to an act performed in a particular setting or context
+> (e.g. a nosocomial-infection supplement). A supplement fires *mechanically with the care
+> setting/acuity*, not with the clinical decision your indicator means to capture — including one
+> in a "test performed" or treatment indicator contaminates it with case-mix, which is fatal when
+> the indicator feeds an instrument or exposure measure. Check each code's libellé in the official
+> nomenclature (dico-snds / ameli) and record the include/exclude decision + reason in this table.
+
 ## Authoritative sources (for `/sds-doc`)
 
 - **dico-snds** (variable dictionary): <https://health-data-hub.shinyapps.io/dico-snds/>

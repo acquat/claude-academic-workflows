@@ -85,6 +85,10 @@ saveRDS(result, file.path(out_dir, "descriptive_name.rds"))
 | Hardcoded / Home paths | Breaks on the portal; Home is system-reserved | Relative paths; write to sasdata1/project |
 | Pushing R/SAS date funcs into Oracle SQL | Silent NULL | Two-step date rule (filter in Oracle, derive dates in R) |
 | Package not on the prod list | Script can't run on the portal | Check `snds-r-portal.md` §1; request before depending on it |
+| Top-level `on.exit()` in a script | Under `source()` it fires after ONE statement — e.g. disconnects the DB before the first query | Explicit teardown at end, or wrap the pipeline in a function and `on.exit()` inside it |
+| Loop over model fits without teardown | Each iteration's fit data + model object stay live → OOM on a capped machine | `rm(fit, model)` + `gc()` at the end of each iteration; subset only needed columns into the fit table |
+| Debugging after a crash inside `Browse[1]>` | Debugger frames PIN objects — `gc()` cannot free them; a post-OOM session stays fragile | Exit with `Q` first; find hogs with `sort(sapply(ls(), \(x) object.size(get(x))), decreasing=TRUE)`; after an OOM prefer a full session restart + re-`source()` |
+| Subsample regression where a factor goes constant | Single-level factor errors (or silently drops obs) | Drop the variable from the spec for that subsample, or convert to a constant numeric so it's removed as collinear with a NOTE |
 
 ## 7. Line Length & Mathematical Exceptions
 
@@ -102,6 +106,8 @@ code: minor penalty. Long lines in documented mathematical sections: no penalty.
 [ ] Packages at top via library() — all on the portal prod list
 [ ] set.seed() once at top
 [ ] All paths relative; nothing written to Home
+[ ] Script is SELF-CONTAINED: one source() rebuilds all state (no reliance on console leftovers)
+[ ] Big intermediates freed (rm + gc) before the next heavy step
 [ ] Functions documented (Roxygen)
 [ ] Figures: explicit dimensions, consistent palette
 [ ] RDS: every heavy result saved once, loaded downstream

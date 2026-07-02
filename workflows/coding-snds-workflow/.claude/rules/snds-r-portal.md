@@ -94,12 +94,41 @@ most-core constructor over convenience aliases (`months()`, `days()`, `years()`)
   result → derive DATEPART / year / interval expressions **in R**. Never push R/SAS date functions
   into Oracle SQL (they translate to a **silent NULL**). Filter on the **partition key**
   (`FLX_DIS_DTD`); **GROUP BY raw columns only**.
+- ⚠️ **Code columns can read back as CHAR (and may be zero-padded) — normalize before comparing.**
+  A nomenclature/specialty/type code pulled from Oracle is often character even when it "looks"
+  numeric: `x == 13L` coerces and silently mismatches padded values (`"13"` vs `"013"`), and any
+  sort/tie-break on the char column is **lexicographic** (`"13" < "2"`). Normalize once —
+  `as.integer(trimws(as.character(x)))` — then compare/sort numerically. And put a fail-fast
+  `stopifnot(nrow(sub) > 0)` **immediately after** building any filtered subset that could come
+  back empty, so a mismatch aborts at the filter (minutes in), not at the model fit (hours in).
 - Same disclosure discipline as SAS applies to anything R exports — identifier-class variables stay
   in the enclave and every export passes the ≥ 11 gate (see cross-references below).
 - If your project has a shared `R/` helpers module (connect / query / export-gate wrappers), reuse
   it rather than re-rolling these per script.
 
-## 4. Cross-references
+## 4. The air-gapped run loop (paste-to-portal discipline)
+
+The portal is air-gapped: local files don't reach it; code arrives by **pasting into the RStudio
+editor**. Three consequences, each learned the hard way:
+
+- **A locally-edited script or helper is STALE on the portal until re-pasted.** `source()` happily
+  loads the old copy. Telltale symptom: a **newly added** function errors "could not find function"
+  / *"fonction introuvable"* while long-standing functions from the same file work fine. Rule:
+  **refresh every shared helper file on the portal before each run** that follows a local edit; in
+  a live session, the quick recovery is pasting just the missing function into the console.
+- **Make analysis scripts SELF-CONTAINED:** one `source()` must rebuild all state from the
+  database — no dependence on objects left in the workspace by earlier console work. Portal
+  sessions get killed (idle timeouts, Citrix drops, OOM); if the script is self-contained, a
+  kicked session costs only the re-run time. Corollary: when console exploration produces
+  something worth keeping (a new outcome, a figure), **fold it back into the script** rather than
+  letting it live only in the session.
+- **Top-level `on.exit()` is a footgun under `source()`:** each top-level statement is evaluated
+  in its own function context, so the handler fires **immediately** after that one statement — an
+  `on.exit(dbDisconnect(conn))` placed at the top kills the connection before the first query.
+  Use an explicit disconnect at the end of the script, or wrap the pipeline in a function and put
+  `on.exit()` inside it.
+
+## 5. Cross-references
 Generic R style (palette, ggsave dims, RDS pattern, checklist): [`r-code-conventions.md`](r-code-conventions.md) ·
 Security + PII: [`snds-data-security.md`](snds-data-security.md) · Export gate (≥ 11, annex):
 [`export-compliance.md`](export-compliance.md) · Oracle/SQL discipline (partition key, joins,

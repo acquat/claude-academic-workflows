@@ -296,6 +296,12 @@ downstream. **Structural/parse correctness is NOT correctness.** Before submitti
    until the counts match** — never ship on "it parses / looks right."
 6. **Fail-fast** `%if &SQLRC >= 8 %then %abort` after every CREATE/INSERT; **drop large
    intermediaries** after their last consumer; header and code must agree on drops.
+   ⚠️ The threshold is `>= 8`, **never `ne 0`**: a bounded `outobs=1` row-touch (or any statement
+   that can WARN) sets `SQLRC=4` on SUCCESS ("Statement terminated early due to OUTOBS=1") — an
+   `ne 0` guard false-aborts on a perfectly healthy table. And never gate on `%nobs`/`attrn(…,
+   'nobs')` for an Oracle table — SAS/ACCESS can return **−1** ("count unavailable without a full
+   pass") for a perfectly good, freshly-created Oracle table; gate on
+   `select count(*) into :n` (deterministic, pushes down). `%nobs` is fine inside a cosmetic `%put`.
 
 > The most expensive SNDS mistake class is the **silent wrong result** — an under/over-pull that
 > parses cleanly. Items 1–5 exist to catch it. When in doubt, probe first.
@@ -327,8 +333,15 @@ original; there is no cross-flux "claim id").
 **signée** de biologie »* ([ER_BIO_F](https://documentation-snds.health-data-hub.fr/tables/er_bio_f/));
 it is the quantity multiplier in the amount formula `coef(BTF_TAR_COF) × prix(BSE_REM_PRU) ×
 BIO_ACT_QSN × taux` ([tables affinées](https://documentation-snds.health-data-hub.fr/snds/fiches/tables_affinees)).
-The pricing coefficient is the *separate* `BTF_TAR_COF`. (`PRS_ACT_QTE` is the prestation-level
-quantity — constant within a prestation, usually 1 — not the per-act count.)
+The pricing coefficient is the *separate* `BTF_TAR_COF`. **`PRS_ACT_QTE` is ALSO signed** — the
+official ER_PRS_F doc calls it *« Quantité (signée) d'actes »*, and a régularisation/annulation
+line carries it NEGATIVE. Reconcile by GRAIN: *within one non-régularisation prestation* it is ~1
+(constant, NOT a per-affiné-act count — so on a post-affiné-join grain, e.g. after the 9-key bio
+join, take it once via `MAX(PRS_ACT_QTE)`, never `SUM` over the joined lines); but at the
+**ER_PRS_F prestation grain** (a general-claims/encounter universe) a régularisation flips it
+negative, so **`SUM(PRS_ACT_QTE)` keep `> 0`** over the care-content grain is the correct
+régularisation netting for GENERAL prestations — exactly analogous to bio's `SUM(BIO_ACT_QSN)`.
+Skipping the netting on a prestation-grain pull counts ghost (cancelled) claims.
 
 **House rule when you need provider IDs** (dropped by the official patient-level grouping):
 - Net at **`(BEN_NIR_PSA, BEN_RNG_GEM, EXE_SOI_DTD, BEN_RES_DPT, PSE_SPE_COD, PSP_SPE_COD,
@@ -384,3 +397,58 @@ exhaust memory/quota and **hang the portal**.
   base-table scan stays server-side, rather than pulling the base table and filtering in WORK/R.
 - Corollary for R: aggregate to the analysis grain **server-side**, pull only that extract (see
   `snds-r-portal.md` §2).
+
+## 16. Cohort × NATIONAL-table joins — flux-month loop + cost-probe
+
+**Any join of a cohort table to a NATIONAL SNDS table (`ER_PHA_F`, `ER_PRS_F`, …) must be swept
+flux-month-by-month — never one all-flux query.** Observed: a single-CTAS join of an ~100M-row
+cohort claims table to national `ER_PHA_F` hash-scanned the whole national table (~13 hours); the
+per-flux-month rewrite (half-open `FLX_DIS_DTD` range on BOTH sides of the composite join, CREATE
+on month 0 / INSERT thereafter, `%if &SQLRC>=8 %abort` per iteration) partition-prunes to one
+month = minutes per iteration. Correctness is safe: a composite claim key belongs to exactly one
+flux-month (`FLX_DIS_DTD` is part of the key), so per-month accumulation cannot split, duplicate,
+or miss a prestation.
+
+**Cost-probe before any multi-hour job:** a portal query whose cost you cannot predict gets a
+**bounded cost-probe first** (one flux-month / cohort sample — seconds to minutes) that MEASURES
+its runtime, BEFORE it rides a long job. Never bolt a cost-unknown scan onto a validated long run
+on an "it'll absorb overnight" judgment. To watch a running async job whose LOG is locked: query
+the table CATALOG (`dictionary.tables`) from a separate tiny submission — the last output table
+present pinpoints the current step.
+
+**Fork hygiene:** when a `_v2`/copy of a validated script exists, DIFF it against the validated
+parent for design-marker drift before trusting it; re-base additions onto the validated parent
+rather than patching a stale base.
+
+## 17. Portal-verified SAS/Oracle traps (each cost a run — don't relearn them)
+
+- **Every date column written to an Oracle (ORAUSER) table reads back as SAS DATETIME magnitude**
+  — SAS-side `year()`/`intnx()`/date-literal comparisons on it silently match nothing (a 0-row
+  bug, not an error). Guard SAS-side derivations with a datepart check
+  (`if x > '01JAN2100'dt then y = year(datepart(x))`); Oracle-pushdown comparisons are safe.
+- **SAS-only functions (INTCK, DATEPART, INTNX…) inside a `CREATE TABLE ORAUSER.x AS SELECT`
+  silently coerce to NULL** — the column exists but every row is missing. For datetime−datetime in
+  days use `(a − b) / 86400` (Oracle-native); otherwise materialize in WORK first, then push.
+- **ORA-01438 (precision overflow):** writing computed float columns (divisions, CASE) straight to
+  an Oracle table lets Oracle infer a too-tight NUMBER precision. Create in WORK first (SAS types
+  the columns), then `CREATE TABLE ORAUSER.x AS SELECT * FROM WORK.x`; wrap divisions in `round()`.
+- **PROC RANK (and DATA-step replaces) cannot overwrite an Oracle table** ("engine does not
+  support REPLACE") — land in WORK, then DROP + recreate the Oracle table.
+- **Scan every `%put`/`title` for internal `;`, apostrophes (`OR'd`), and `%macroname` tokens**
+  before declaring a script portal-ready — each one breaks the step (recurring ERROR 180 class).
+- **Open-code `%abort` / nested `%if` are illegal outside a macro** — wrap fail-fast guards in a
+  small `%chk_sqlrc`-style macro. A nested `proc sql` inside a macro invoked mid-`CREATE TABLE`
+  corrupts the outer statement (portal-fatal); resolve metadata with
+  `%sysfunc(open/varnum/vartype)` instead.
+- **SAS asynchrone has NO user-facing kill for a running job** — the Action column is empty while
+  "En cours"; escalation is a support ticket. Preventive: chunk long jobs (flux-loop style) and
+  build a sentinel-table kill-switch checked between steps.
+- **Fine geography codes may not be globally unique** — e.g. DCIR `BEN_RES_COM` is the commune
+  WITHIN a département (the same 3-digit code recurs across ~110 départements); the unique unit is
+  `BEN_RES_DPT + BEN_RES_COM` (canonical INSEE, width-aware zero-padding, Corsica 2A/2B). Using
+  the partial code as an FE or cluster silently pools unrelated units. Verify any geographic key's
+  grain (`count(distinct full)` vs `count(distinct partial)`) before it enters a model.
+- **CEPIDC death linkage:** filter `DCD_IDT_TOP = 1` (certificate matched to the registry;
+  numeric, `= 1` not `'1'`) in the WHERE, before the GROUP BY. It can be empirically non-binding
+  for some join shapes — keep it anyway (defense-in-depth), and when a filter was omitted, flag
+  the number as *unverified* rather than *wrong* until a differential run confirms materiality.
